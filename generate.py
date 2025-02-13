@@ -1,9 +1,10 @@
 import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QLabel, QVBoxLayout, QWidget, QPushButton
-from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor
 from PyQt5.QtCore import Qt
 import svgwrite
 import ezdxf
+from PyQt5.QtSvg import QSvgRenderer
 
 class VectorFileProcessor(QMainWindow):
     def __init__(self):
@@ -26,6 +27,7 @@ class VectorFileProcessor(QMainWindow):
         self.setCentralWidget(self.container)
         
         self.points = []
+        self.pixmap = None
         
         self.open_file()
 
@@ -39,13 +41,19 @@ class VectorFileProcessor(QMainWindow):
                 self.process_dxf(file_name)
 
     def process_svg(self, file_name):
-        # Load SVG and display it
-        image = QImage(file_name)
-        if image.isNull():
+        # Load SVG and display it using QSvgRenderer
+        svg_renderer = QSvgRenderer(file_name)
+        if not svg_renderer.isValid():
             self.label.setText("Failed to load SVG image.")
         else:
-            pixmap = QPixmap.fromImage(image)
-            self.label.setPixmap(pixmap)
+            # Create a QPixmap with the size of the SVG
+            pixmap = QPixmap(svg_renderer.defaultSize())
+            pixmap.fill(Qt.transparent)  # Fill with transparent background
+            painter = QPainter(pixmap)
+            svg_renderer.render(painter)
+            painter.end()
+            self.pixmap = pixmap
+            self.label.setPixmap(self.pixmap)
             self.label.mousePressEvent = self.get_point
 
     def process_dxf(self, file_name):
@@ -57,12 +65,28 @@ class VectorFileProcessor(QMainWindow):
         # Here we just set a placeholder
         self.label.setText("DXF file loaded. Click to select points.")
         self.label.mousePressEvent = self.get_point
+        # Simulate DXF rendering by setting a placeholder pixmap
+        self.pixmap = QPixmap(800, 600)  # Assuming a default size
+        self.pixmap.fill(Qt.white)  # Fill with white background
+        self.label.setPixmap(self.pixmap)
+        self.label.mousePressEvent = self.get_point
 
     def get_point(self, event):
         x = event.pos().x()
         y = event.pos().y()
         self.points.append((x, y))
         print(f"Point added: ({x}, {y})")
+        self.update_image_with_points()
+
+    def update_image_with_points(self):
+        if self.pixmap:
+            overlay = self.pixmap.copy()
+            painter = QPainter(overlay)
+            painter.setPen(QColor(255, 0, 0))  # Red color for points
+            for point in self.points:
+                painter.drawEllipse(point[0] - 2, point[1] - 2, 4, 4)  # Draw a small circle
+            painter.end()
+            self.label.setPixmap(overlay)
 
     def generate_gcode(self):
         if not self.points:
